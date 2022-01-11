@@ -4,7 +4,7 @@ ExternalProject_Add(
     mlnsdk
     PREFIX ${CMAKE_BINARY_DIR}/vendor/mlnsdk
     GIT_REPOSITORY "https://github.com/lazychase/mlnsdk.git"
-    GIT_TAG "v0.0.3"
+    GIT_TAG "v0.0.4"
     TIMEOUT 10
     CONFIGURE_COMMAND ""
     BUILD_COMMAND ""
