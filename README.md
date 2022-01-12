@@ -180,3 +180,39 @@ mln::net::NetService::connect(
 ![run on vs](https://user-images.githubusercontent.com/97491125/149047325-f5e41979-c76d-4139-ae88-a9a0a592d659.jpg)
 
 
+# 빠르게 사용하기
+샘플 프로젝트를 그대로 사용하면서 패킷 핸들러를 등록하는 코드( handler.registJsonPacketHandler ) 에 원하는 패킷을 추가해서 사용 가능합니다.
+
+# 패킷 프로토콜 커스텀
+자신만의 패킷 구조와 다루는 방법을 정의하여 서비스 파라미터로 제공하여 사용가능합니다. 편의함수에서는  PacketJsonParser를 사용하고 있습니다.  
+### 서비스 파라미터에 커스텀 프로토콜 정보 지정
+```
+mln::net::ServiceParams serviceInitParams{
+	ioc
+	, userHandler                           // -> 네트워크 이벤트 수신 객체
+	, mln::net::PacketJsonParser::parse     // -> 패킷 파서
+	, mln::net::PacketJsonParser::get()     // -> 패킷 헤더 조작함수
+	, 1000                                  // -> onUpdate 함수가 호출되는 주기(ms)
+	, 0                                     // -> 만료시간( 세션을 사용하지 않을 때 onExpiredSession 함수가 호출되는 시간)
+};
+```
+### Json 라이브러리 지정
+기본 구현으로 microsoft의 cpprestsdk 의 json 구조체를 제공하고 있습니다. 지정 코드는 이것이고,
+```
+handler.setJsonBodyParser(mln::net::cpprest::parse);
+```
+지정한 함수는 바이너리 스트림을 입력받아 해당 라이브러리의 json value 객체를 반환하는 인터페이스를 가져야 합니다. 아래는 cpprest 의 json value 를 반환하는 함수입니다.
+```
+namespace mln::net::cpprest {
+	static std::tuple<bool, web::json::value> parse(unsigned char* body, uint32_t bodySize) {
+
+		try {
+			std::string myJsonString((char*)body, bodySize);
+			return { true, web::json::value::parse(myJsonString) };
+		}
+		catch (std::exception e) {
+			return { false, web::json::value::null() };
+		}
+	}
+}//namespace mln::net::mlncpprest {
+```
