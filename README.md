@@ -11,3 +11,172 @@ visual studio 에서 CMakeLists.txt 를 실행하세요.
 docker build --no-cache -t chase81/mlnserver .
 docker run --name mlnserver chase81/mlnserver
 ```
+
+# 실행 준비
+통신을 위해 사용자가 준비해야 하는 것들은 다음과 같습니다.(이하 프로토콜세트)
+1. 패킷 구조체 정의
+2. 패킷 구조에 의존한 패킷을 송수신하는 방법
+3. 각 패킷 및 패킷 처리부
+
+mlnserver 에서 기본으로 제공하는 프로토콜세트를 사용하는 방법은 다음과 같습니다.
+
+## 서버 준비
+### 네트워크 이벤트를 수신할 객체를 생성합니다.
+```
+class ServiceEventReceiver
+	{
+	public:
+		void onAccept(mln::net::Session::sptr session);
+		void onAcceptFailed(mln::net::Session::sptr session);
+		void onClose(mln::net::Session::sptr session);
+		void onCloseFailed(mln::net::Session::sptr session);
+		void onUpdate(uint64_t deltaTimsMs);
+		void onExpiredSession(mln::net::Session::sptr session);
+		void noHandler(mln::net::Session::sptr session, mln::net::ByteStream& byteStream);
+	public:
+		void initHandler(mln::net::PacketProcedure* packetProc);
+	};
+```
+위의 예시에 보이는 함수들을 public 인터페이스로 가진 클래스가 필요합니다.
+* onAccept, onAcceptFailed : 클라이언트가 접속(접속실패) 시 호출됨
+* onClose, onCloseFailed : 클라이언트가 종료(종료실패) 시 호출됨
+* onUpdate : deltaTimeMs 마다 호출됨. 호출 주기는 0 이외의 값으로 제공 시 동작합니다.
+* onExpiredSession : 만료시간을 지정할 경우, 지정된 시간동안 통신이 없는 세션이 통지됨
+* noHandler : 등록되지 않은 패킷 요청을 수신하였을때 호출됨
+* initHandler : 이 부분에 사용자 패킷 및 핸들러를 등록합니다.
+
+### 패킷 및 핸들러 등록
+initHandler 함수는 서비스가 초기화될때 호출이 됩니다. 이곳에서 수신할 패킷의 식별자와 핸들러를 등록합니다. 미리 정의해둔 json packet 프로토콜은 문자열을 기반으로 하고 있습니다.
+
+```
+void ServiceEventReceiver::initHandler(PacketProcedure* packetProcedure)
+{
+	using namespace mln::net;
+
+	// packetJson::PT_JSON 패킷을 등록.
+	auto static handler = PacketJsonHandler<web::json::value>();
+	handler.init(packetProcedure);
+	handler.setJsonBodyParser(mln::net::cpprest::parse);
+
+	// 서브패킷들(json packets)을 등록
+	handler.registJsonPacketHandler("/lobby/login", [](
+		UserBase::sptr userBase
+		, const std::string& url
+		, auto & jv
+		) {
+
+		assert(url == "/lobby/login");
+
+		LOGD("received packet from client. (C->S) url:{}", url);
+		auto receivedJsonString = jv.serialize();
+		std::cout << CONV_UTF8(receivedJsonString) << std::endl;
+
+
+		auto user = std::static_pointer_cast<User>(userBase);
+		std::string replyString(receivedJsonString.begin(), receivedJsonString.end());
+		user->sendJsonPacket(url, replyString);
+	});
+
+}
+```
+패킷 식별자가 '/lobby/login' 이고, 동작은 수신한 json 문자열을 출력 후 다시 돌려주는 기능입니다.
+
+### 서버 서비스 실행
+준비한 이벤트 수신 클래스로 서비스를 등록합니다.
+```
+using namespace mlnserver;
+	using namespace mln::net;
+
+	ServiceEventReceiver eventReceiver;
+
+	auto acceptor = NetService::accept(
+		eventReceiver
+		, *g_ioc.get()
+		, 9090
+	);
+```
+9090 포트로 서비스를 시작하였습니다. g_ioc 는 boost::asio::io_context 객체입니다.  
+이렇게 하면 서버사이드는 준비가 끝났습니다.
+
+## 클라이언트 준비
+클라이언트도 서버를 준비할때와 마찬가지로 네트워크 이벤트를 수신할 클래스를 준비하고 패킷 및 핸들러를 등록합니다.
+```
+class SampleConnector
+	{
+	public:
+		void onConnect(mln::net::Session::sptr session) {
+			LOGD("onConnect - {}/{}"
+				, session->socket().remote_endpoint().address().to_string()
+				, session->socket().remote_endpoint().port());
+
+			// create user.
+			auto user = std::make_shared<User>(session);
+			session->setUser(user);
+
+			std::istringstream json_data(R"json(
+  {
+    "how": "are",
+    "you": "Im",
+    "fine": "thx",
+    "andu": "hello everyone"
+}
+ )json");
+			auto ss = json_data.str();
+
+			user->sendJsonPacket("/lobby/login", ss);
+		}
+
+		void onConnectFailed(mln::net::Session::sptr session) {
+			LOGE("onConnectFailed");
+		}
+
+		void onClose(mln::net::Session::sptr session) {
+			LOGD("onClose - {}/{}"
+				, session->socket().remote_endpoint().address().to_string()
+				, session->socket().remote_endpoint().port());
+		}
+		void onCloseFailed(mln::net::Session::sptr session) {}
+
+		void onUpdate(uint64_t elapse) {}
+		void onExpiredSession(mln::net::Session::sptr session) {}
+		void noHandler(mln::net::Session::sptr session, mln::net::ByteStream& packet) {}
+
+	public:
+		void initHandler(mln::net::PacketProcedure* packetProcedure) {
+			using namespace mln::net;
+
+			auto static handler = PacketJsonHandler<web::json::value>();
+
+			handler.init(packetProcedure);
+			handler.setJsonBodyParser(mln::net::cpprest::parse);
+			handler.registJsonPacketHandler("/lobby/login", [](
+				UserBase::sptr user
+				, const std::string& url
+				, auto& jv
+				) {
+				assert(url == "/lobby/login");
+
+				LOGD("received packet from server. (S->C) url:{}", url);
+				std::cout << CONV_UTF8(jv.serialize()) << std::endl;
+			});
+		}
+```
+네트워크 이벤트는 서버와 유사합니다. 서버에서는 accept 이벤트를, 클라이언트에서는 connect 이벤트를 수신하는 차이가 있습니다.  
+위의 코드에서는 '/lobby/login' 패킷을 수신하면 화면에 출력하는 핸들러를 등록합니다.
+
+그리고 아래와 같이 서버로 접속하는 클라이언트 서비스를 실행합니다
+```
+SampleConnector connectorInstance;
+
+mln::net::NetService::connect(
+	connectorInstance
+	, ioc
+	, "127.0.0.1"
+	, 9090
+);
+```
+
+그리고 프로젝트를 실행하면 서버와 클라이언트가 패킷을 주고받아 출력하는 결과를 확인할 수 있습니다.
+![run on vs](https://user-images.githubusercontent.com/97491125/149047325-f5e41979-c76d-4139-ae88-a9a0a592d659.jpg)
+
+
