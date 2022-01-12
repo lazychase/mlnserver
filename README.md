@@ -1,27 +1,36 @@
-# mlnserver
-C++ ���� �����ӿ�ũ [mlnsdk](https://github.com/lazychase/mlnsdk) �� ���� ���� ���� ������Ʈ �Դϴ�.
+﻿# mlnserver
+C++ 서버 프레임워크 [mlnsdk](https://github.com/lazychase/mlnsdk) 로 만든 예제 서버 프로젝트 입니다.  
 
-# ����
+## 목차
+[실행](#실행)    ​
+[실행을 위해 예제에서 준비된 것들](#실행을-위해-예제에서-준비된-것들)  
+[빠르게 사용하기](빠르게-사용하기)  
+[패킷 프로토콜 커스텀](패킷-프로토콜-커스텀)
+
+
+
+
+# 실행
 ## on Windows
-visual studio ���� CMakeLists.txt �� �����ϼ���.  
+visual studio 에서 CMakeLists.txt 를 실행하세요.  
 ![run on vs](https://user-images.githubusercontent.com/97491125/148936553-c7738242-a97e-472b-9d8f-f04efcad6905.jpg)
 ## on Linux
-������ ��Ÿ��ȯ�� ��Ŀ�̹����� mlnserver ��Ŀ������ �غ��Ͽ����ϴ�. docker/Dockerfile �� ����Ͽ� ������ �� �ֽ��ϴ�.
+리눅스 런타임환경 도커이미지와 mlnserver 도커파일을 준비하였습니다. docker/Dockerfile 을 사용하여 실행할 수 있습니다.
 ```
 docker build --no-cache -t chase81/mlnserver .
 docker run --name mlnserver chase81/mlnserver
 ```
 
-# ������ ���� �������� �غ�� �͵�
-����� ���� ����ڰ� �غ��ؾ� �ϴ� �͵��� ������ �����ϴ�.(���� �������ݼ�Ʈ)
-1. ��Ŷ ����ü ����
-2. ��Ŷ ������ ������ ��Ŷ�� �ۼ����ϴ� ���
-3. �� ��Ŷ �� ��Ŷ ó����
+# 실행을 위해 예제에서 준비된 것들
+통신을 위해 사용자가 준비해야 하는 것들은 다음과 같습니다.(이하 프로토콜세트)
+1. 패킷 구조체 정의
+2. 패킷 구조에 의존한 패킷을 송수신하는 방법
+3. 각 패킷 및 패킷 처리부
 
-�� ������Ʈ������ �⺻���� �����ϴ� �������ݼ�Ʈ�� ����Ͽ� ������ Ŭ���̾�Ʈ�� �����ϴ� ����� �����ϰ� �ֽ��ϴ�.
+이 프로젝트에서는 기본으로 제공하는 프로토콜세트를 사용하여 서버와 클라이언트를 실행하는 방법을 예시하고 있습니다.
 
-## ���� �غ�
-### ��Ʈ��ũ �̺�Ʈ�� ������ ��ü�� �����մϴ�.
+## 서버 준비
+### 네트워크 이벤트를 수신할 객체를 생성합니다.
 ```
 class ServiceEventReceiver
 	{
@@ -37,28 +46,28 @@ class ServiceEventReceiver
 		void initHandler(mln::net::PacketProcedure* packetProc);
 	};
 ```
-���� ���ÿ� ���̴� �Լ����� public �������̽��� ���� Ŭ������ �ʿ��մϴ�.
-* onAccept, onAcceptFailed : Ŭ���̾�Ʈ�� ����(���ӽ���) �� ȣ���
-* onClose, onCloseFailed : Ŭ���̾�Ʈ�� ����(�������) �� ȣ���
-* onUpdate : deltaTimeMs ���� ȣ���. ȣ�� �ֱ�� 0 �̿��� ������ ���� �� �����մϴ�.
-* onExpiredSession : ����ð��� ������ ���, ������ �ð����� ����� ���� ������ ������
-* noHandler : ��ϵ��� ���� ��Ŷ ��û�� �����Ͽ����� ȣ���
-* initHandler : �� �κп� ����� ��Ŷ �� �ڵ鷯�� ����մϴ�.
+위의 예시에 보이는 함수들을 public 인터페이스로 가진 클래스가 필요합니다.
+* onAccept, onAcceptFailed : 클라이언트가 접속(접속실패) 시 호출됨
+* onClose, onCloseFailed : 클라이언트가 종료(종료실패) 시 호출됨
+* onUpdate : deltaTimeMs 마다 호출됨. 호출 주기는 0 이외의 값으로 제공 시 동작합니다.
+* onExpiredSession : 만료시간을 지정할 경우, 지정된 시간동안 통신이 없는 세션이 통지됨
+* noHandler : 등록되지 않은 패킷 요청을 수신하였을때 호출됨
+* initHandler : 이 부분에 사용자 패킷 및 핸들러를 등록합니다.
 
-### ��Ŷ �� �ڵ鷯 ���
-initHandler �Լ��� ���񽺰� �ʱ�ȭ�ɶ� ȣ���� �˴ϴ�. �̰����� ������ ��Ŷ�� �ĺ��ڿ� �ڵ鷯�� ����մϴ�. �̸� �����ص� json packet ���������� ���ڿ��� ������� �ϰ� �ֽ��ϴ�.
+### 패킷 및 핸들러 등록
+initHandler 함수는 서비스가 초기화될때 호출이 됩니다. 이곳에서 수신할 패킷의 식별자와 핸들러를 등록합니다. 미리 정의해둔 json packet 프로토콜은 문자열을 기반으로 하고 있습니다.
 
 ```
 void ServiceEventReceiver::initHandler(PacketProcedure* packetProcedure)
 {
 	using namespace mln::net;
 
-	// packetJson::PT_JSON ��Ŷ�� ���.
+	// packetJson::PT_JSON 패킷을 등록.
 	auto static handler = PacketJsonHandler<web::json::value>();
 	handler.init(packetProcedure);
 	handler.setJsonBodyParser(mln::net::cpprest::parse);
 
-	// ������Ŷ��(json packets)�� ���
+	// 서브패킷들(json packets)을 등록
 	handler.registJsonPacketHandler("/lobby/login", [](
 		UserBase::sptr userBase
 		, const std::string& url
@@ -79,10 +88,10 @@ void ServiceEventReceiver::initHandler(PacketProcedure* packetProcedure)
 
 }
 ```
-��Ŷ �ĺ��ڰ� '/lobby/login' �̰�, ������ ������ json ���ڿ��� ��� �� �ٽ� �����ִ� ����Դϴ�.
+패킷 식별자가 '/lobby/login' 이고, 동작은 수신한 json 문자열을 출력 후 다시 돌려주는 기능입니다.
 
-### ���� ���� ����
-�غ��� �̺�Ʈ ���� Ŭ������ ���񽺸� ����մϴ�.
+### 서버 서비스 실행
+준비한 이벤트 수신 클래스로 서비스를 등록합니다.
 ```
 using namespace mlnserver;
 	using namespace mln::net;
@@ -95,11 +104,11 @@ using namespace mlnserver;
 		, 9090
 	);
 ```
-9090 ��Ʈ�� ���񽺸� �����Ͽ����ϴ�. g_ioc �� boost::asio::io_context ��ü�Դϴ�.  
-�̷��� �ϸ� �������̵�� �غ� �������ϴ�.
+9090 포트로 서비스를 시작하였습니다. g_ioc 는 boost::asio::io_context 객체입니다.  
+이렇게 하면 서버사이드는 준비가 끝났습니다.
 
-## Ŭ���̾�Ʈ �غ�
-Ŭ���̾�Ʈ�� ������ �غ��Ҷ��� ���������� ��Ʈ��ũ �̺�Ʈ�� ������ Ŭ������ �غ��ϰ� ��Ŷ �� �ڵ鷯�� ����մϴ�.
+## 클라이언트 준비
+클라이언트도 서버를 준비할때와 마찬가지로 네트워크 이벤트를 수신할 클래스를 준비하고 패킷 및 핸들러를 등록합니다.
 ```
 class SampleConnector
 	{
@@ -114,13 +123,13 @@ class SampleConnector
 			session->setUser(user);
 
 			std::istringstream json_data(R"json(
-  {
-    "how": "are",
-    "you": "Im",
-    "fine": "thx",
-    "andu": "hello everyone"
+ ​{
+   ​"how": "are",
+   ​"you": "Im",
+   ​"fine": "thx",
+   ​"andu": "hello everyone"
 }
- )json");
+​)json");
 			auto ss = json_data.str();
 
 			user->sendJsonPacket("/lobby/login", ss);
@@ -161,10 +170,10 @@ class SampleConnector
 			});
 		}
 ```
-��Ʈ��ũ �̺�Ʈ�� ������ �����մϴ�. ���������� accept �̺�Ʈ��, Ŭ���̾�Ʈ������ connect �̺�Ʈ�� �����ϴ� ���̰� �ֽ��ϴ�.  
-���� �ڵ忡���� '/lobby/login' ��Ŷ�� �����ϸ� ȭ�鿡 ����ϴ� �ڵ鷯�� ����մϴ�.
+네트워크 이벤트는 서버와 유사합니다. 서버에서는 accept 이벤트를, 클라이언트에서는 connect 이벤트를 수신하는 차이가 있습니다.  
+위의 코드에서는 '/lobby/login' 패킷을 수신하면 화면에 출력하는 핸들러를 등록합니다.
 
-�׸��� �Ʒ��� ���� ������ �����ϴ� Ŭ���̾�Ʈ ���񽺸� �����մϴ�
+그리고 아래와 같이 서버로 접속하는 클라이언트 서비스를 실행합니다
 ```
 SampleConnector connectorInstance;
 
@@ -176,32 +185,32 @@ mln::net::NetService::connect(
 );
 ```
 
-�׸��� ������Ʈ�� �����ϸ� ������ Ŭ���̾�Ʈ�� ��Ŷ�� �ְ��޾� ����ϴ� ����� Ȯ���� �� �ֽ��ϴ�.
+그리고 프로젝트를 실행하면 서버와 클라이언트가 패킷을 주고받아 출력하는 결과를 확인할 수 있습니다.  
 ![run on vs](https://user-images.githubusercontent.com/97491125/149047325-f5e41979-c76d-4139-ae88-a9a0a592d659.jpg)
 
 
-# ������ ����ϱ�
-���� ������Ʈ�� �״�� ����ϸ鼭 ��Ŷ �ڵ鷯�� ����ϴ� �ڵ�( handler.registJsonPacketHandler ) �� ���ϴ� ��Ŷ�� �߰��ؼ� ��� �����մϴ�.
+# 빠르게 사용하기
+샘플 프로젝트를 그대로 사용하면서 패킷 핸들러를 등록하는 코드( handler.registJsonPacketHandler ) 에 원하는 패킷을 추가해서 사용 가능합니다.
 
-# ��Ŷ �������� Ŀ����
-�ڽŸ��� ��Ŷ ������ �ٷ�� ����� �����Ͽ� ���� �Ķ���ͷ� �����Ͽ� ��밡���մϴ�. �����Լ�������  PacketJsonParser�� ����ϰ� �ֽ��ϴ�.  
-### ���� �Ķ���Ϳ� Ŀ���� �������� ���� ����
+# 패킷 프로토콜 커스텀
+자신만의 패킷 구조와 다루는 방법을 정의하여 서비스 파라미터로 제공하여 사용가능합니다. 편의함수에서는  PacketJsonParser를 사용하고 있습니다.  
+### 서비스 파라미터에 커스텀 프로토콜 정보 지정
 ```
 mln::net::ServiceParams serviceInitParams{
 	ioc
-	, userHandler                           // -> ��Ʈ��ũ �̺�Ʈ ���� ��ü
-	, mln::net::PacketJsonParser::parse     // -> ��Ŷ �ļ�
-	, mln::net::PacketJsonParser::get()     // -> ��Ŷ ��� �����Լ�
-	, 1000                                  // -> onUpdate �Լ��� ȣ��Ǵ� �ֱ�(ms)
-	, 0                                     // -> ����ð�( ������ ������� ���� �� onExpiredSession �Լ��� ȣ��Ǵ� �ð�)
+	, userHandler                           // -> 네트워크 이벤트 수신 객체
+	, mln::net::PacketJsonParser::parse     // -> 패킷 파서
+	, mln::net::PacketJsonParser::get()     // -> 패킷 헤더 조작함수
+	, 1000                                  // -> onUpdate 함수가 호출되는 주기(ms)
+	, 0                                     // -> 만료시간( 세션을 사용하지 않을 때 onExpiredSession 함수가 호출되는 시간)
 };
 ```
-### Json ���̺귯�� ����
-�⺻ �������� microsoft�� cpprestsdk �� json ����ü�� �����ϰ� �ֽ��ϴ�. ���� �ڵ�� �̰��̰�,
+### Json 라이브러리 지정
+기본 구현으로 microsoft의 cpprestsdk 의 json 구조체를 제공하고 있습니다. 지정 코드는 이것이고,
 ```
 handler.setJsonBodyParser(mln::net::cpprest::parse);
 ```
-������ �Լ��� ���̳ʸ� ��Ʈ���� �Է¹޾� �ش� ���̺귯���� json value ��ü�� ��ȯ�ϴ� �������̽��� ������ �մϴ�. �Ʒ��� cpprest �� json value �� ��ȯ�ϴ� �Լ��Դϴ�.
+지정한 함수는 바이너리 스트림을 입력받아 해당 라이브러리의 json value 객체를 반환하는 인터페이스를 가져야 합니다. 아래는 cpprest 의 json value 를 반환하는 함수입니다.
 ```
 namespace mln::net::cpprest {
 	static std::tuple<bool, web::json::value> parse(unsigned char* body, uint32_t bodySize) {
@@ -215,4 +224,4 @@ namespace mln::net::cpprest {
 		}
 	}
 }//namespace mln::net::mlncpprest {
-```
+``
